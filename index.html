@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crash Dummy Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --sky: #b9c4cc;
+    --ink: #15191c;
+    --panel: rgba(21, 25, 28, 0.88);
+    --line: rgba(238, 241, 242, 0.14);
+    --text: #eef1f2;
+    --muted: #97a3aa;
+    --accent: #f0b429;
+    --alert: #e5484d;
+    --display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--sky);
+    color: var(--text);
+    font: 14px/1.4 var(--display);
+  }
+  #stage { position: fixed; inset: 0; }
+  #stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  #stage canvas.grabbing { cursor: grabbing; }
+
+  .hud {
+    position: fixed;
+    left: 0; right: 0;
+    padding-inline: 16px;
+    pointer-events: none;
+    display: flex;
+    gap: 12px;
+  }
+  .hud > * { pointer-events: auto; }
+  .top { top: calc(env(safe-area-inset-top, 0px) + 16px); justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+  .bottom { bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); justify-content: center; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .brand { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+  .mark {
+    width: 30px; height: 30px; flex: none; border-radius: 50%;
+    background: conic-gradient(var(--ink) 0 25%, var(--accent) 0 50%, var(--ink) 0 75%, var(--accent) 0);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.02em; line-height: 1; text-transform: uppercase; text-wrap: balance; }
+  .brand p { margin: 3px 0 0; color: var(--muted); font-size: 13px; letter-spacing: 0.04em; }
+
+  .telemetry { width: 250px; padding: 10px 12px 12px; }
+  .t-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .t-head b { color: var(--accent); font-weight: 600; font-family: var(--mono); letter-spacing: 0; font-size: 12px; }
+  #spark { display: block; width: 100%; height: 58px; margin-block: 8px; }
+  dl { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  dl div { display: flex; flex-direction: column; gap: 1px; }
+  dt { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  dd { margin: 0; font: 600 20px/1.1 var(--mono); font-variant-numeric: tabular-nums; }
+  dd small { font: 500 12px var(--display); color: var(--muted); margin-left: 3px; letter-spacing: 0.04em; }
+  dd.hot { color: var(--alert); }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 12px; max-width: 100%; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    font: 600 14px/1 var(--display);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--ink); }
+  button[aria-pressed="true"] { background: rgba(240, 180, 41, 0.16); border-color: var(--accent); color: var(--accent); }
+  kbd { font: 400 11px var(--mono); color: var(--muted); margin-left: 6px; }
+  button.primary kbd { color: rgba(21, 25, 28, 0.6); }
+
+  .sliders { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .sliders label { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .sliders output { font: 400 12px var(--mono); color: var(--text); min-width: 5ch; font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 110px; accent-color: var(--accent); }
+
+  .hint { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12px; letter-spacing: 0.04em; }
+
+  @media (max-width: 640px) {
+    .top { flex-direction: column; align-items: stretch; gap: 8px; }
+    .brand { padding: 8px 12px; }
+    h1 { font-size: 18px; }
+    .brand p { display: none; }
+    .telemetry { width: auto; padding: 8px 12px; }
+    #spark { height: 40px; margin-block: 6px; }
+    dl { grid-template-columns: repeat(4, 1fr); gap: 4px 8px; }
+    dd { font-size: 16px; }
+    dt { font-size: 10px; }
+    .controls { gap: 8px 12px; }
+    button { padding: 8px 10px; font-size: 13px; }
+    kbd { display: none; }
+    input[type="range"] { width: 90px; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+
+<div class="hud top">
+  <header class="panel brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>Crash Dummy Lab</h1>
+      <p>Test cell 3 · 16-point Verlet ragdoll</p>
+    </div>
+  </header>
+  <aside class="panel telemetry" aria-label="Telemetry for the tracked dummy">
+    <div class="t-head"><span>Head sensor</span><b id="tag">Dummy 01</b></div>
+    <canvas id="spark" aria-hidden="true"></canvas>
+    <dl>
+      <div><dt>Accel</dt><dd id="gNowBox"><span id="gNow">0</span><small>g</small></dd></div>
+      <div><dt>Peak</dt><dd id="gPeakBox"><span id="gPeak">0</span><small>g</small></dd></div>
+      <div><dt>Speed</dt><dd><span id="spd">0.0</span><small>m/s</small></dd></div>
+      <div><dt>Height</dt><dd><span id="hgt">0.0</span><small>m</small></dd></div>
+    </dl>
+  </aside>
+</div>
+
+<div class="hud bottom">
+  <div class="panel controls">
+    <div class="btns">
+      <button id="bStairs" class="primary">Stair drop<kbd>D</kbd></button>
+      <button id="bThrow">Throw<kbd>Space</kbd></button>
+      <button id="bSlow" aria-pressed="false">Slow-mo<kbd>S</kbd></button>
+      <button id="bFollow" aria-pressed="true">Follow<kbd>F</kbd></button>
+      <button id="bReset">Reset<kbd>R</kbd></button>
+    </div>
+    <div class="sliders">
+      <label for="sGrav">Gravity <input type="range" id="sGrav" min="0" max="2" step="0.05" value="1"><output id="oGrav" for="sGrav">1.00 g</output></label>
+      <label for="sTone">Muscle tone <input type="range" id="sTone" min="0" max="1" step="0.01" value="0.12"><output id="oTone" for="sTone">12%</output></label>
+    </div>
+    <p class="hint">Drag a dummy to grab it · drag empty space to orbit · scroll or pinch to zoom</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+(() => {
+  "use strict";
+  const V = THREE.Vector3;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------- settings
+  const H = 1 / 120;          // physics substep (s)
+  const ITER = 10;            // constraint iterations per substep
+  const DAMP = 0.999;         // air damping per substep
+  const FRICTION = 0.14;      // tangential velocity removed per contact substep
+  const STATIC = 0.0015;      // below this slide per substep, contacts stick
+  const BOUNCE = 0.15;
+  const BOUND = 28;           // arena half-size (m)
+  const MAX_DUMMIES = 8;
+  const G_LIMIT = 80;         // head-acceleration injury reference, g
+
+  const S = { grav: 1, tone: 0.12, slow: false, follow: true };
+
+  // ---------------------------------------------------------------- renderer
+  const stage = $("stage");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  stage.appendChild(renderer.domElement);
+  const canvas = renderer.domElement;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xb9c4cc);
+  scene.fog = new THREE.Fog(0xb9c4cc, 22, 58);
+
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
+
+  scene.add(new THREE.HemisphereLight(0xdfe7ec, 0x5e5a52, 0.5));
+  const sun = new THREE.DirectionalLight(0xfff6e8, 0.85);
+  sun.position.set(7, 14, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 40 });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun);
+
+  // ---------------------------------------------------------------- textures
+  function canvasTex(w, h, draw, repeatX = 1, repeatY = 1) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    draw(c.getContext("2d"), w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.encoding = THREE.sRGBEncoding;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeatX, repeatY);
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return t;
+  }
+
+  // Concrete floor, 4 m tile with a 1 m grid
+  const floorTex = canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = "#cfd2cd"; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 5000; i++) {
+      g.fillStyle = Math.random() < 0.5 ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.08)";
+      g.fillRect(Math.random() * w, Math.random() * h, 2, 2);
+    }
+    g.strokeStyle = "rgba(20,25,28,0.13)"; g.lineWidth = 2;
+    for (let i = 0; i <= 4; i++) {
+      g.beginPath(); g.moveTo(i * 128, 0); g.lineTo(i * 128, h); g.stroke();
+      g.beginPath(); g.moveTo(0, i * 128); g.lineTo(w, i * 128); g.stroke();
+    }
+    g.strokeStyle = "rgba(20,25,28,0.25)"; g.lineWidth = 4; g.strokeRect(0, 0, w, h);
+  }, 15, 15);
+
+  const hazardTex = canvasTex(128, 32, (g, w, h) => {
+    g.fillStyle = "#f0b429"; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#15191c";
+    for (let x = -h; x < w + h; x += 32) {
+      g.beginPath(); g.moveTo(x, h); g.lineTo(x + 16, h); g.lineTo(x + 16 + h, 0); g.lineTo(x + h, 0); g.fill();
+    }
+  }, 10, 1);
+
+  // Head skin with the quadrant targets that crash dummies carry on each temple
+  const headTexCache = new Map();
+  function headTex(hex) {
+    if (headTexCache.has(hex)) return headTexCache.get(hex);
+    const col = "#" + hex.toString(16).padStart(6, "0");
+    const t = canvasTex(512, 256, (g, w, h) => {
+      g.fillStyle = col; g.fillRect(0, 0, w, h);
+      const target = (cx, cy, r) => {
+        for (let q = 0; q < 4; q++) {
+          g.fillStyle = q % 2 ? col : "#15191c";
+          g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r, q * Math.PI / 2, (q + 1) * Math.PI / 2); g.closePath(); g.fill();
+        }
+        g.strokeStyle = "#15191c"; g.lineWidth = 4;
+        g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+      };
+      target(0, h * 0.5, 30); target(w, h * 0.5, 30); target(w * 0.5, h * 0.5, 30);
+      g.strokeStyle = "rgba(21,25,28,0.35)"; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(0, h * 0.62); g.lineTo(w, h * 0.62); g.stroke();
+    });
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    headTexCache.set(hex, t);
+    return t;
+  }
+
+  // ---------------------------------------------------------------- environment
+  const colliders = [];
+  const matConcrete = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 });
+  const matSteel = new THREE.MeshStandardMaterial({ color: 0x8e989e, roughness: 0.7, metalness: 0.15 });
+  const matFoam = new THREE.MeshStandardMaterial({ color: 0x3f6e8c, roughness: 0.9 });
+  const matCrate = new THREE.MeshStandardMaterial({ color: 0x6f7a80, roughness: 0.8 });
+  const matHazard = new THREE.MeshStandardMaterial({ map: hazardTex, roughness: 0.6 });
+
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(BOUND * 2 + 4, BOUND * 2 + 4), matConcrete);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  function addBox(cx, cy, cz, sx, sy, sz, mat, rot = [0, 0, 0], solid = true) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+    m.position.set(cx, cy, cz);
+    m.rotation.set(rot[0], rot[1], rot[2]);
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+    m.updateMatrixWorld(true);
+    if (solid) {
+      const half = new V(sx / 2, sy / 2, sz / 2);
+      colliders.push({
+        mat: m.matrixWorld.clone(),
+        inv: m.matrixWorld.clone().invert(),
+        nm: new THREE.Matrix3().setFromMatrix4(m.matrixWorld),
+        half,
+        center: m.position.clone(),
+        radius: half.length(),
+      });
+    }
+    return m;
+  }
+
+  // Platform and staircase
+  addBox(0, 1.5, -4.5, 4, 3, 3, matSteel);
+  addBox(0, 3.011, -3.04, 4, 0.022, 0.08, matHazard, [0, 0, 0], false);
+  for (let i = 0; i < 9; i++) {
+    const h = 3 - 0.3 * (i + 1), z0 = -3 + 0.48 * i;
+    addBox(0, h / 2, z0 + 0.24, 4, h, 0.48, matSteel);
+    addBox(0, h + 0.011, z0 + 0.04, 4, 0.022, 0.08, matHazard, [0, 0, 0], false);
+  }
+  // Ramp and its support
+  addBox(5.5, 0.95, -2, 2.4, 0.2, 5, matSteel, [0.35, 0, 0]);
+  addBox(5.5, 0.85, -4.2, 2.4, 1.7, 0.5, matSteel);
+  // Foam blocks
+  addBox(-4.5, 0.4, 1, 2.2, 0.8, 2.2, matFoam);
+  addBox(-4.7, 1.0, 0.7, 1.1, 0.4, 1.1, matFoam, [0, 0.3, 0]);
+  // Crates
+  addBox(3, 0.35, 3, 0.7, 0.7, 0.7, matCrate);
+  addBox(3.15, 1.05, 3.05, 0.7, 0.7, 0.7, matCrate, [0, 0.45, 0]);
+  addBox(3.9, 0.35, 3.2, 0.7, 0.7, 0.7, matCrate, [0, 0.2, 0]);
+
+  // ---------------------------------------------------------------- skeleton definition
+  const HEAD = 0, NECK = 1, CHEST = 2, PELVIS = 3, LSH = 4, RSH = 5, LEL = 6, REL = 7,
+        LHA = 8, RHA = 9, LHIP = 10, RHIP = 11, LKN = 12, RKN = 13, LFT = 14, RFT = 15;
+  // Rest pose, standing, facing +z, left is +x (metres)
+  const REST = [
+    [0, 1.70, 0.01], [0, 1.50, 0], [0, 1.28, 0.06], [0, 0.99, -0.01],
+    [0.19, 1.44, 0], [-0.19, 1.44, 0], [0.23, 1.16, -0.01], [-0.23, 1.16, -0.01],
+    [0.25, 0.90, 0.03], [-0.25, 0.90, 0.03], [0.1, 0.92, 0], [-0.1, 0.92, 0],
+    [0.11, 0.51, 0.03], [-0.11, 0.51, 0.03], [0.11, 0.08, -0.02], [-0.11, 0.08, -0.02],
+  ].map((a) => new V(a[0], a[1], a[2]));
+  const RADII = [0.12, 0.06, 0.09, 0.1, 0.07, 0.07, 0.05, 0.05, 0.05, 0.05, 0.08, 0.08, 0.06, 0.06, 0.06, 0.06];
+  const INVM = [1.2, 1, 0.4, 0.4, 0.8, 0.8, 1.2, 1.2, 1.5, 1.5, 0.7, 0.7, 1, 1, 1.2, 1.2];
+  const N = REST.length;
+
+  const CONS = [];
+  const restLen = (a, b) => REST[a].distanceTo(REST[b]);
+  function link(a, b, k = 1, lo = 1, hi = 1) { const L = restLen(a, b); CONS.push({ a, b, min: L * lo, max: L * hi, k }); }
+  function range(a, b, min, max) { CONS.push({ a, b, min, max, k: 1 }); }
+
+  const UPPER = [NECK, CHEST, LSH, RSH], LOWER = [PELVIS, LHIP, RHIP];
+  for (let i = 0; i < UPPER.length; i++) for (let j = i + 1; j < UPPER.length; j++) link(UPPER[i], UPPER[j]);
+  for (let i = 0; i < LOWER.length; i++) for (let j = i + 1; j < LOWER.length; j++) link(LOWER[i], LOWER[j]);
+  for (const a of UPPER) for (const b of LOWER) link(a, b, 0.5, 0.95, 1.05); // lets the spine flex a little
+  link(HEAD, NECK);
+  for (const b of [LSH, RSH, CHEST]) link(HEAD, b, 0.6, 0.9, 1.08);
+  for (const [sh, el, ha] of [[LSH, LEL, LHA], [RSH, REL, RHA]]) {
+    link(sh, el); link(el, ha);
+    const L = restLen(sh, el) + restLen(el, ha);
+    range(sh, ha, L * 0.4, L);
+  }
+  for (const [hp, kn, ft] of [[LHIP, LKN, LFT], [RHIP, RKN, RFT]]) {
+    link(hp, kn); link(kn, ft);
+    const L = restLen(hp, kn) + restLen(kn, ft);
+    range(hp, ft, L * 0.45, L);
+  }
+
+  // Pose springs: "muscle tone" pulls these toward standing distances
+  const POSE = [
+    [LHA, LHIP], [RHA, RHIP], [LHA, NECK], [RHA, NECK], [LEL, CHEST], [REL, CHEST],
+    [LFT, RHIP], [RFT, LHIP], [LFT, PELVIS], [RFT, PELVIS], [LKN, CHEST], [RKN, CHEST],
+    [LFT, RFT], [LKN, RKN], [HEAD, PELVIS], [LHA, LSH], [RHA, RSH], [LFT, LHIP], [RFT, RHIP],
+  ].map(([a, b]) => ({ a, b, rest: restLen(a, b) }));
+
+  // Pairs within one dummy that never collide with each other
+  const NOCOL = new Set();
+  const key = (a, b) => (a < b ? a * N + b : b * N + a);
+  const CORE = [HEAD, NECK, CHEST, PELVIS, LSH, RSH, LHIP, RHIP];
+  for (const a of CORE) for (const b of CORE) if (a !== b) NOCOL.add(key(a, b));
+  for (const c of CONS) NOCOL.add(key(c.a, c.b));
+
+  // ---------------------------------------------------------------- shared visuals
+  const COLORS = [0xf0b429, 0xe8772e, 0xd9d4c7];
+  const bodyMats = new Map();
+  function bodyMat(hex) {
+    if (!bodyMats.has(hex)) bodyMats.set(hex, {
+      body: new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5 }),
+      head: new THREE.MeshStandardMaterial({ map: headTex(hex), roughness: 0.45 }),
+    });
+    return bodyMats.get(hex);
+  }
+  const matJoint = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.35, metalness: 0.35 });
+
+  const ellipsoid = (rx, ry, rz, c) => new THREE.SphereGeometry(1, 28, 18).scale(rx, ry, rz).translate(c.x, c.y, c.z);
+  const GEO = {
+    upper: ellipsoid(0.17, 0.155, 0.11, new V(0, 1.33, 0.0)),
+    pelvis: ellipsoid(0.16, 0.1, 0.115, new V(0, 0.95, 0)),
+    head: ellipsoid(0.112, 0.128, 0.118, REST[HEAD]),
+    joint: new THREE.SphereGeometry(1, 16, 12),
+    hand: new THREE.SphereGeometry(1, 16, 12).scale(0.04, 0.06, 0.028),
+    foot: new THREE.BoxGeometry(0.1, 0.07, 0.25),
+  };
+  const SEGS = [
+    [LSH, LEL, 0.045], [LEL, LHA, 0.038], [RSH, REL, 0.045], [REL, RHA, 0.038],
+    [LHIP, LKN, 0.065], [LKN, LFT, 0.05], [RHIP, RKN, 0.065], [RKN, RFT, 0.05],
+    [PELVIS, CHEST, 0.1], [NECK, HEAD, 0.04],
+  ].map(([a, b, r]) => ({ a, b, r, geo: new THREE.CapsuleGeometry(r, Math.max(0.01, restLen(a, b) - r), 4, 14) }));
+  const JOINTS = [[LSH, 0.058], [RSH, 0.058], [LEL, 0.048], [REL, 0.048], [LHIP, 0.075], [RHIP, 0.075], [LKN, 0.062], [RKN, 0.062]];
+
+  // Rigid-part frames: a matrix built from three particles, compared against the rest pose
+  const _x = new V(), _y = new V(), _z = new V();
+  function frameMat(out, a, b, c) {
+    _x.subVectors(b, a).normalize();
+    _y.subVectors(c, a);
+    _z.crossVectors(_x, _y).normalize();
+    _y.crossVectors(_z, _x);
+    out.makeBasis(_x, _y, _z);
+    return out.setPosition(a);
+  }
+  const INV_UP = frameMat(new THREE.Matrix4(), REST[RSH], REST[LSH], REST[CHEST]).invert();
+  const INV_LO = frameMat(new THREE.Matrix4(), REST[RHIP], REST[LHIP], REST[PELVIS]).invert();
+  const INV_HD = frameMat(new THREE.Matrix4(), REST[NECK], REST[HEAD], REST[LSH]).invert();
+
+  // ---------------------------------------------------------------- dummy
+  const dummies = [];
+  const pickables = [];
+  let serial = 0;
+
+  class Dummy {
+    constructor(pos, quat, vel, spin) {
+      this.id = ++serial;
+      this.color = COLORS[(this.id - 1) % COLORS.length];
+      const center = new V(0, 1, 0), tmp = new V(), w = new V();
+      this.pts = REST.map((r, i) => {
+        const local = tmp.copy(r).sub(center).applyQuaternion(quat).clone();
+        const p = local.clone().add(pos);
+        const v = w.crossVectors(spin, local).add(vel);
+        return { p, o: p.clone().addScaledVector(v, -H), r: RADII[i], w: INVM[i] };
+      });
+      this.buildMeshes();
+    }
+
+    buildMeshes() {
+      const m = bodyMat(this.color);
+      this.group = new THREE.Group();
+      const add = (geo, mat, auto = true) => {
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        mesh.matrixAutoUpdate = auto;
+        mesh.userData.dummy = this;
+        this.group.add(mesh);
+        pickables.push(mesh);
+        return mesh;
+      };
+      this.upper = add(GEO.upper, m.body, false);
+      this.pelvis = add(GEO.pelvis, m.body, false);
+      this.head = add(GEO.head, m.head, false);
+      this.segs = SEGS.map((s) => ({ ...s, mesh: add(s.geo, s.a === NECK ? matJoint : m.body) }));
+      this.joints = JOINTS.map(([i, r]) => { const j = add(GEO.joint, matJoint); j.scale.setScalar(r); return { i, mesh: j }; });
+      this.hands = [[LEL, LHA], [REL, RHA]].map(([e, h]) => ({ e, h, mesh: add(GEO.hand, m.body) }));
+      this.feet = [[LKN, LFT], [RKN, RFT]].map(([k, f]) => ({ k, f, mesh: add(GEO.foot, matJoint, false) }));
+      scene.add(this.group);
+    }
+
+    dispose() {
+      scene.remove(this.group);
+      for (const c of this.group.children) {
+        const i = pickables.indexOf(c);
+        if (i >= 0) pickables.splice(i, 1);
+      }
+    }
+
+    frame() {
+      const P = this.pts;
+      const up = this.up || (this.up = new V()), right = this.right || (this.right = new V()), fwd = this.fwd || (this.fwd = new V());
+      up.subVectors(P[NECK].p, P[PELVIS].p).normalize();
+      right.subVectors(P[LHIP].p, P[RHIP].p).add(P[LSH].p).sub(P[RSH].p);
+      fwd.crossVectors(right, up).normalize();
+      right.crossVectors(up, fwd);
+    }
+
+    solve(tone) {
+      const P = this.pts;
+      for (const c of CONS) solveDist(P[c.a], P[c.b], c.min, c.max, c.k);
+      if (tone > 0) {
+        const k = tone * 0.12;
+        for (const s of POSE) solveDist(P[s.a], P[s.b], s.rest, s.rest, k);
+      }
+      this.frame();
+      const { up, right, fwd } = this;
+      // Knees bend forward only; hips, shoulders and neck stay inside rough cones
+      kneeLimit(P[LHIP], P[LKN], P[LFT], fwd);
+      kneeLimit(P[RHIP], P[RKN], P[RFT], fwd);
+      _ax.copy(right);
+      cone(P[LHIP], P[LKN], fwd, -0.35, 1); cone(P[LHIP], P[LKN], up, -1, 0.55); cone(P[LHIP], P[LKN], _ax, -0.3, 0.75);
+      cone(P[LSH], P[LEL], _ax, -0.45, 1); cone(P[LSH], P[LEL], fwd, -0.6, 1);
+      _ax.copy(right).negate();
+      cone(P[RHIP], P[RKN], fwd, -0.35, 1); cone(P[RHIP], P[RKN], up, -1, 0.55); cone(P[RHIP], P[RKN], _ax, -0.3, 0.75);
+      cone(P[RSH], P[REL], _ax, -0.45, 1); cone(P[RSH], P[REL], fwd, -0.6, 1);
+      cone(P[NECK], P[HEAD], up, 0.5, 1); cone(P[NECK], P[HEAD], fwd, -0.35, 0.8);
+    }
+
+    updateMeshes() {
+      const P = this.pts.map((q) => q.p);
+      this.upper.matrix.multiplyMatrices(frameMat(_m, P[RSH], P[LSH], P[CHEST]), INV_UP);
+      this.pelvis.matrix.multiplyMatrices(frameMat(_m, P[RHIP], P[LHIP], P[PELVIS]), INV_LO);
+      this.head.matrix.multiplyMatrices(frameMat(_m, P[NECK], P[HEAD], P[LSH]), INV_HD);
+      this.upper.matrixWorldNeedsUpdate = this.pelvis.matrixWorldNeedsUpdate = this.head.matrixWorldNeedsUpdate = true;
+      for (const s of this.segs) {
+        _d.subVectors(P[s.b], P[s.a]);
+        const len = _d.length();
+        s.mesh.position.addVectors(P[s.a], P[s.b]).multiplyScalar(0.5);
+        if (len > 1e-6) s.mesh.quaternion.setFromUnitVectors(Y, _d.divideScalar(len));
+      }
+      for (const j of this.joints) j.mesh.position.copy(P[j.i]);
+      for (const h of this.hands) {
+        _d.subVectors(P[h.h], P[h.e]).normalize();
+        h.mesh.position.copy(P[h.h]).addScaledVector(_d, 0.03);
+        h.mesh.quaternion.setFromUnitVectors(Y, _d);
+      }
+      this.frame();
+      for (const f of this.feet) {
+        _y.subVectors(P[f.k], P[f.f]).normalize();
+        _z.copy(this.fwd).addScaledVector(_y, -this.fwd.dot(_y)).normalize();
+        _x.crossVectors(_y, _z);
+        f.mesh.matrix.makeBasis(_x, _y, _z).setPosition(_d.copy(P[f.f]).addScaledVector(_z, 0.05).addScaledVector(_y, -0.02));
+        f.mesh.matrixWorldNeedsUpdate = true;
+      }
+    }
+  }
+
+  const Y = new V(0, 1, 0), _m = new THREE.Matrix4(), _d = new V(), _ax = new V(), _t = new V();
+
+  function solveDist(A, B, min, max, k) {
+    const dx = B.p.x - A.p.x, dy = B.p.y - A.p.y, dz = B.p.z - A.p.z;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len < 1e-9) return;
+    const target = len < min ? min : len > max ? max : len;
+    if (target === len) return;
+    const wsum = A.w + B.w;
+    if (wsum === 0) return;
+    const f = ((len - target) / len) * k / wsum;
+    A.p.x += dx * f * A.w; A.p.y += dy * f * A.w; A.p.z += dz * f * A.w;
+    B.p.x -= dx * f * B.w; B.p.y -= dy * f * B.w; B.p.z -= dz * f * B.w;
+  }
+
+  // Keep the child segment (a→b) direction within [minDot, maxDot] along axis
+  function cone(A, B, axis, minDot, maxDot) {
+    _d.subVectors(B.p, A.p);
+    const L = _d.length();
+    if (L < 1e-6) return;
+    _d.divideScalar(L);
+    const dot = _d.dot(axis);
+    let t;
+    if (dot < minDot) t = minDot - dot; else if (dot > maxDot) t = maxDot - dot; else return;
+    _d.addScaledVector(axis, t).normalize();
+    _t.copy(A.p).addScaledVector(_d, L).sub(B.p);
+    B.p.addScaledVector(_t, 0.7);
+    A.p.addScaledVector(_t, -0.3);
+  }
+
+  const _kf = new V(), _mid = new V();
+  function kneeLimit(hip, knee, foot, fwd) {
+    _d.subVectors(foot.p, hip.p);
+    const L = _d.length();
+    if (L < 1e-6) return;
+    _d.divideScalar(L);
+    _kf.copy(fwd).addScaledVector(_d, -fwd.dot(_d));
+    const kl = _kf.length();
+    if (kl < 1e-3) return;
+    _kf.divideScalar(kl);
+    _mid.addVectors(hip.p, foot.p).multiplyScalar(0.5);
+    const s = _t.subVectors(knee.p, _mid).dot(_kf);
+    const want = 0.015;
+    if (s >= want) return;
+    const c = want - s;
+    knee.p.addScaledVector(_kf, c * 0.6);
+    hip.p.addScaledVector(_kf, -c * 0.2);
+    foot.p.addScaledVector(_kf, -c * 0.2);
+  }
+
+  // ---------------------------------------------------------------- collisions
+  const _l = new V(), _n = new V();
+  const WALLS = [
+    [new V(1, 0, 0), -BOUND], [new V(-1, 0, 0), -BOUND], [new V(0, 0, 1), -BOUND], [new V(0, 0, -1), -BOUND],
+  ];
+
+  function friction(pt, n) {
+    const p = pt.p, o = pt.o;
+    let vx = p.x - o.x, vy = p.y - o.y, vz = p.z - o.z;
+    const vn = vx * n.x + vy * n.y + vz * n.z;
+    let tx = vx - n.x * vn, ty = vy - n.y * vn, tz = vz - n.z * vn;
+    const tl = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    const keep = tl < STATIC ? 0 : 1 - FRICTION;
+    const vn2 = vn < 0 ? -vn * BOUNCE : vn;
+    vx = tx * keep + n.x * vn2; vy = ty * keep + n.y * vn2; vz = tz * keep + n.z * vn2;
+    o.set(p.x - vx, p.y - vy, p.z - vz);
+  }
+
+  function collideEnv(pt, fric) {
+    const p = pt.p, r = pt.r;
+    if (p.y < r) { p.y = r; if (fric) friction(pt, Y); }
+    for (const [n, c] of WALLS) {
+      const d = p.dot(n) - c;
+      if (d < r) { p.addScaledVector(n, r - d); if (fric) friction(pt, n); }
+    }
+    for (const col of colliders) {
+      const br = col.radius + r;
+      if (p.distanceToSquared(col.center) > br * br) continue;
+      _l.copy(p).applyMatrix4(col.inv);
+      const h = col.half;
+      const qx = Math.max(-h.x, Math.min(h.x, _l.x));
+      const qy = Math.max(-h.y, Math.min(h.y, _l.y));
+      const qz = Math.max(-h.z, Math.min(h.z, _l.z));
+      const dx = _l.x - qx, dy = _l.y - qy, dz = _l.z - qz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > r * r) continue;
+      if (d2 > 1e-12) {
+        const d = Math.sqrt(d2);
+        _n.set(dx / d, dy / d, dz / d);
+        _l.set(qx + _n.x * r, qy + _n.y * r, qz + _n.z * r);
+      } else {
+        // centre is inside the box: leave through the nearest face
+        const px = h.x - Math.abs(_l.x), py = h.y - Math.abs(_l.y), pz = h.z - Math.abs(_l.z);
+        if (px <= py && px <= pz) { const s = Math.sign(_l.x) || 1; _n.set(s, 0, 0); _l.x = s * (h.x + r); }
+        else if (py <= pz) { const s = Math.sign(_l.y) || 1; _n.set(0, s, 0); _l.y = s * (h.y + r); }
+        else { const s = Math.sign(_l.z) || 1; _n.set(0, 0, s); _l.z = s * (h.z + r); }
+      }
+      p.copy(_l.applyMatrix4(col.mat));
+      _n.applyMatrix3(col.nm).normalize();
+      if (fric) friction(pt, _n);
+    }
+  }
+
+  function collideParticles() {
+    for (let a = 0; a < dummies.length; a++) {
+      const A = dummies[a];
+      for (let b = a; b < dummies.length; b++) {
+        const B = dummies[b];
+        if (a !== b && A.pts[PELVIS].p.distanceToSquared(B.pts[PELVIS].p) > 6.25) continue;
+        for (let i = 0; i < N; i++) {
+          const pi = A.pts[i];
+          for (let j = a === b ? i + 1 : 0; j < N; j++) {
+            if (a === b && NOCOL.has(i * N + j)) continue;
+            const pj = B.pts[j];
+            const dx = pj.p.x - pi.p.x, dy = pj.p.y - pi.p.y, dz = pj.p.z - pi.p.z;
+            const rr = pi.r + pj.r;
+            const d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 >= rr * rr || d2 < 1e-12) continue;
+            const d = Math.sqrt(d2);
+            const f = (d - rr) / d / (pi.w + pj.w);
+            pi.p.x += dx * f * pi.w; pi.p.y += dy * f * pi.w; pi.p.z += dz * f * pi.w;
+            pj.p.x -= dx * f * pj.w; pj.p.y -= dy * f * pj.w; pj.p.z -= dz * f * pj.w;
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- grabbing
+  const grab = { dummy: null, i: -1, target: new V(), offset: new V(), plane: new THREE.Plane() };
+  const grabLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new V(), new V()]),
+    new THREE.LineBasicMaterial({ color: 0x15191c })
+  );
+  const grabDot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), new THREE.MeshBasicMaterial({ color: 0x15191c }));
+  grabLine.visible = grabDot.visible = false;
+  grabLine.frustumCulled = false;
+  scene.add(grabLine, grabDot);
+
+  // ---------------------------------------------------------------- simulation step
+  let active = null;
+  const tele = { prevHead: new V(), vHist: [], frameG: 0, peak: 0 };
+
+  function step() {
+    const gy = -9.81 * S.grav * H * H;
+    if (active) tele.prevHead.copy(active.pts[HEAD].p);
+    for (const d of dummies) for (const pt of d.pts) {
+      const p = pt.p, o = pt.o;
+      const vx = (p.x - o.x) * DAMP, vy = (p.y - o.y) * DAMP, vz = (p.z - o.z) * DAMP;
+      o.copy(p);
+      p.x += vx; p.y += vy + gy; p.z += vz;
+    }
+    for (let it = 0; it < ITER; it++) {
+      for (const d of dummies) d.solve(S.tone);
+      if (grab.dummy) grab.dummy.pts[grab.i].p.lerp(grab.target, 0.35);
+      if (it === 4 || it === ITER - 1) collideParticles();
+      for (const d of dummies) for (const pt of d.pts) collideEnv(pt, false);
+    }
+    for (const d of dummies) for (const pt of d.pts) collideEnv(pt, true);
+
+    if (active) {
+      const v = new V().subVectors(active.pts[HEAD].p, tele.prevHead).divideScalar(H);
+      tele.vHist.push(v);
+      if (tele.vHist.length > 4) tele.vHist.shift();
+      if (tele.vHist.length === 4) {
+        const g = tele.vHist[3].distanceTo(tele.vHist[0]) / (3 * H) / 9.81;
+        tele.frameG = Math.max(tele.frameG, g);
+      }
+      tele.speed = v.length();
+    }
+  }
+
+  // ---------------------------------------------------------------- spawning
+  function addDummy(pos, quat, vel, spin) {
+    const d = new Dummy(pos, quat, vel, spin);
+    dummies.push(d);
+    while (dummies.length > MAX_DUMMIES) {
+      const old = dummies.shift();
+      if (grab.dummy === old) endGrab();
+      old.dispose();
+    }
+    setActive(d);
+    return d;
+  }
+
+  function setActive(d) {
+    active = d;
+    tele.vHist.length = 0;
+    tele.peak = 0;
+    tele.frameG = 0;
+    $("tag").textContent = "Dummy " + String(d.id).padStart(2, "0");
+  }
+
+  function stairDrop() {
+    const q = new THREE.Quaternion().setFromAxisAngle(Y, (Math.random() - 0.5) * 0.3);
+    addDummy(new V((Math.random() - 0.5) * 1.6, 3.93, -3.4), q, new V(0, 0, 0.5), new V(2.3, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.4));
+  }
+
+  function throwDummy() {
+    const dir = camera.getWorldDirection(new V());
+    const start = camera.position.clone().addScaledVector(dir, 2.2);
+    start.y = Math.max(start.y, 1.3);
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28));
+    const vel = dir.multiplyScalar(13).add(new V(0, 2.5, 0));
+    const spin = new V(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(9);
+    addDummy(start, q, vel, spin);
+  }
+
+  function reset() {
+    endGrab();
+    while (dummies.length) dummies.pop().dispose();
+    serial = 0;
+    cam.target.set(0, 1.5, -1.5);
+    stairDrop();
+  }
+
+  // ---------------------------------------------------------------- camera
+  const cam = { yaw: 0.85, pitch: 0.36, dist: 10.5, target: new V(0, 1.5, -1.5) };
+  const followPt = new V();
+  function placeCamera() {
+    const cp = Math.cos(cam.pitch);
+    camera.position.set(
+      cam.target.x + Math.sin(cam.yaw) * cp * cam.dist,
+      Math.max(0.25, cam.target.y + Math.sin(cam.pitch) * cam.dist),
+      cam.target.z + Math.cos(cam.yaw) * cp * cam.dist
+    );
+    camera.lookAt(cam.target);
+  }
+
+  // ---------------------------------------------------------------- input
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  const pointers = new Map();
+  let mode = null, pinchD = 0;
+
+  function setRay(e) {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+  }
+
+  function tryGrab(e) {
+    setRay(e);
+    const hit = ray.intersectObjects(pickables, false)[0];
+    if (!hit) return false;
+    const d = hit.object.userData.dummy;
+    let best = 0, bd = Infinity;
+    d.pts.forEach((pt, i) => { const dd = pt.p.distanceToSquared(hit.point); if (dd < bd) { bd = dd; best = i; } });
+    grab.dummy = d; grab.i = best;
+    grab.offset.subVectors(d.pts[best].p, hit.point);
+    grab.plane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(_t), hit.point);
+    grab.target.copy(d.pts[best].p);
+    grabLine.visible = grabDot.visible = true;
+    canvas.classList.add("grabbing");
+    if (d !== active) setActive(d);
+    return true;
+  }
+
+  function moveGrab(e) {
+    setRay(e);
+    if (ray.ray.intersectPlane(grab.plane, _d)) {
+      grab.target.copy(_d).add(grab.offset);
+      grab.target.y = Math.max(grab.target.y, 0.05);
+    }
+  }
+
+  function endGrab() {
+    grab.dummy = null;
+    grabLine.visible = grabDot.visible = false;
+    canvas.classList.remove("grabbing");
+  }
+
+  const pinchDist = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+
+  canvas.addEventListener("pointerdown", (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 1) mode = e.button === 0 && tryGrab(e) ? "grab" : "orbit";
+    else { endGrab(); mode = "pinch"; pinchD = pinchDist(); }
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    const prev = pointers.get(e.pointerId);
+    if (!prev) return;
+    const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+    prev.x = e.clientX; prev.y = e.clientY;
+    if (mode === "grab") moveGrab(e);
+    else if (mode === "orbit") {
+      cam.yaw -= dx * 0.006;
+      cam.pitch = Math.max(0.03, Math.min(1.45, cam.pitch + dy * 0.005));
+    } else if (mode === "pinch" && pointers.size >= 2) {
+      const nd = pinchDist();
+      if (nd > 0 && pinchD > 0) cam.dist = Math.max(2, Math.min(30, cam.dist * (pinchD / nd)));
+      pinchD = nd;
+    }
+  });
+  const release = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size === 0) { endGrab(); mode = null; }
+    else if (mode === "pinch" && pointers.size === 1) mode = "orbit";
+  };
+  canvas.addEventListener("pointerup", release);
+  canvas.addEventListener("pointercancel", release);
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    cam.dist = Math.max(2, Math.min(30, cam.dist * Math.exp(e.deltaY * 0.001)));
+  }, { passive: false });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  const bSlow = $("bSlow"), bFollow = $("bFollow");
+  const toggleSlow = () => { S.slow = !S.slow; bSlow.setAttribute("aria-pressed", S.slow); };
+  const toggleFollow = () => { S.follow = !S.follow; bFollow.setAttribute("aria-pressed", S.follow); };
+  $("bStairs").addEventListener("click", stairDrop);
+  $("bThrow").addEventListener("click", throwDummy);
+  $("bReset").addEventListener("click", reset);
+  bSlow.addEventListener("click", toggleSlow);
+  bFollow.addEventListener("click", toggleFollow);
+
+  const sGrav = $("sGrav"), sTone = $("sTone");
+  sGrav.addEventListener("input", () => { S.grav = +sGrav.value; $("oGrav").textContent = S.grav.toFixed(2) + " g"; });
+  sTone.addEventListener("input", () => { S.tone = +sTone.value; $("oTone").textContent = Math.round(S.tone * 100) + "%"; });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); if (e.repeat) return; throwDummy(); }
+    else if (k === "d") stairDrop();
+    else if (k === "r") reset();
+    else if (k === "s") toggleSlow();
+    else if (k === "f") toggleFollow();
+  });
+
+  // ---------------------------------------------------------------- telemetry display
+  const spark = $("spark");
+  const sg = spark.getContext("2d");
+  const history = new Array(240).fill(0);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function sizeSpark() {
+    spark.width = Math.round(spark.clientWidth * dpr);
+    spark.height = Math.round(spark.clientHeight * dpr);
+  }
+
+  function drawSpark() {
+    const w = spark.width, h = spark.height, top = 110;
+    sg.clearRect(0, 0, w, h);
+    const y = (g) => h - (Math.min(g, top) / top) * (h - 2 * dpr) - dpr;
+    sg.strokeStyle = "rgba(238,241,242,0.08)"; sg.lineWidth = dpr;
+    for (const g of [25, 50]) { sg.beginPath(); sg.moveTo(0, y(g)); sg.lineTo(w, y(g)); sg.stroke(); }
+    sg.strokeStyle = "rgba(229,72,77,0.8)"; sg.setLineDash([4 * dpr, 3 * dpr]);
+    sg.beginPath(); sg.moveTo(0, y(G_LIMIT)); sg.lineTo(w, y(G_LIMIT)); sg.stroke();
+    sg.setLineDash([]);
+    sg.fillStyle = "rgba(229,72,77,0.9)"; sg.font = `${10 * dpr}px "JetBrains Mono", monospace`;
+    sg.textAlign = "right"; sg.fillText(G_LIMIT + " g", w - 2 * dpr, y(G_LIMIT) - 3 * dpr);
+    const step = w / (history.length - 1);
+    sg.beginPath(); sg.moveTo(0, h);
+    history.forEach((g, i) => sg.lineTo(i * step, y(g)));
+    sg.lineTo(w, h); sg.closePath();
+    sg.fillStyle = "rgba(240,180,41,0.18)"; sg.fill();
+    sg.beginPath();
+    history.forEach((g, i) => (i ? sg.lineTo(i * step, y(g)) : sg.moveTo(0, y(g))));
+    sg.strokeStyle = "#f0b429"; sg.lineWidth = 1.5 * dpr; sg.stroke();
+    const last = history[history.length - 1];
+    sg.beginPath(); sg.arc(w - 2 * dpr, y(last), 2.5 * dpr, 0, Math.PI * 2); sg.fillStyle = "#f0b429"; sg.fill();
+  }
+
+  let lastText = 0, shownG = 0;
+  function updateTelemetry(now) {
+    const g = tele.frameG;
+    tele.frameG = 0;
+    tele.peak = Math.max(tele.peak, g);
+    history.push(g); history.shift();
+    shownG = Math.max(g, shownG * 0.9);
+    drawSpark();
+    if (now - lastText > 100 && active) {
+      lastText = now;
+      $("gNow").textContent = Math.round(shownG);
+      $("gPeak").textContent = Math.round(tele.peak);
+      $("gPeakBox").classList.toggle("hot", tele.peak >= G_LIMIT);
+      $("gNowBox").classList.toggle("hot", shownG >= G_LIMIT);
+      $("spd").textContent = (tele.speed || 0).toFixed(1);
+      $("hgt").textContent = active.pts[HEAD].p.y.toFixed(2);
+    }
+  }
+
+  // ---------------------------------------------------------------- loop
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    sizeSpark();
+  }
+  window.addEventListener("resize", resize);
+
+  let acc = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.1);
+    last = now;
+    acc += dt * (S.slow ? 0.25 : 1);
+    let n = 0;
+    while (acc >= H && n < 6) { step(); acc -= H; n++; }
+    if (n === 6) acc = 0;
+
+    for (const d of dummies) d.updateMeshes();
+
+    if (grab.dummy) {
+      const p = grab.dummy.pts[grab.i].p;
+      grabLine.geometry.attributes.position.setXYZ(0, p.x, p.y, p.z);
+      grabLine.geometry.attributes.position.setXYZ(1, grab.target.x, grab.target.y, grab.target.z);
+      grabLine.geometry.attributes.position.needsUpdate = true;
+      grabDot.position.copy(grab.target);
+    }
+
+    if (S.follow && active && !grab.dummy) {
+      followPt.copy(active.pts[PELVIS].p);
+      followPt.y = Math.max(0.6, followPt.y);
+      cam.target.lerp(followPt, 1 - Math.exp(-dt * 2.5));
+    }
+    placeCamera();
+    updateTelemetry(now);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  stairDrop();
+  const q0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, 1.2, 1.4));
+  addDummy(new V(-4.4, 2.6, 1.0), q0, new V(0, -1, 0), new V(0.5, 0, 1));
+  setActive(dummies[0]);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
